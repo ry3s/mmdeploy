@@ -10,13 +10,22 @@ namespace mmdeploy {
 
 typedef std::unordered_map<std::string, std::vector<OrtCustomOp*>> CustomOpsTable;
 
-struct OrtTensorDimensions : std::vector<int64_t> {
-  OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
-    OrtTensorTypeAndShapeInfo* info = ort.GetTensorTypeAndShape(value);
-    std::vector<int64_t>::operator=(ort.GetTensorShape(info));
-    ort.ReleaseTensorTypeAndShapeInfo(info);
-  }
-};
+// struct OrtTensorDimensions : std::vector<int64_t> {
+//   OrtTensorDimensions(const OrtApi& ort, const OrtValue* value) {
+//     // OrtTensorTypeAndShapeInfo* info = ort.GetTensorTypeAndShape(value);
+//     // std::vector<int64_t>::operator=(ort.GetTensorShape(info));
+//     // ort.ReleaseTensorTypeAndShapeInfo(info);
+
+//     OrtTensorTypeAndShapeInfo *info;
+//     ort.GetTensorTypeAndShape(value, &info);
+//     int64_t* dim_values;
+//     size_t dim_values_length;
+//     ort.GetDimensionsCount(info, &dim_values_length);
+//     ort.GetDimensions(info, dim_values, dim_values_length);
+//     std::vector<int64_t>::assign(dim_values, dim_values + dim_values_length);
+//     ort.ReleaseTensorTypeAndShapeInfo(info);
+//   }
+// };
 
 CustomOpsTable& get_mmdeploy_custom_ops();
 

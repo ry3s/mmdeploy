@@ -263,8 +263,9 @@ float rotated_boxes_intersection(const RotatedBox& box1, const RotatedBox& box2)
 
 NMSRotatedKernel::NMSRotatedKernel(const OrtApi& api, const OrtKernelInfo* info)
     : ort_(api), info_(info) {
-  iou_threshold_ = ort_.KernelInfoGetAttribute<float>(info, "iou_threshold");
-  score_threshold_ = ort_.KernelInfoGetAttribute<float>(info, "score_threshold");
+  const auto kernel_info = Ort::ConstKernelInfo(info);
+  iou_threshold_ = kernel_info.GetAttribute<float>("iou_threshold");
+  score_threshold_ = kernel_info.GetAttribute<float>("score_threshold");
 
   // create allocator
   allocator_ = Ort::AllocatorWithDefaultOptions();
@@ -274,13 +275,14 @@ void NMSRotatedKernel::Compute(OrtKernelContext* context) {
   const float iou_threshold = iou_threshold_;
   const float score_threshold = score_threshold_;
 
-  const OrtValue* boxes = ort_.KernelContext_GetInput(context, 0);
-  const float* boxes_data = reinterpret_cast<const float*>(ort_.GetTensorData<float>(boxes));
-  const OrtValue* scores = ort_.KernelContext_GetInput(context, 1);
-  const float* scores_data = reinterpret_cast<const float*>(ort_.GetTensorData<float>(scores));
+  const Ort::KernelContext ctx(context);
+  const auto boxes = ctx.GetInput(0);
+  const float* boxes_data = boxes.GetTensorData<float>();
+  const auto scores = ctx.GetInput(1);
+  const float* scores_data = scores.GetTensorData<float>();
 
-  OrtTensorDimensions boxes_dim(ort_, boxes);
-  OrtTensorDimensions scores_dim(ort_, scores);
+  std::vector<int64_t> boxes_dim = boxes.GetTensorTypeAndShapeInfo().GetShape();
+  std::vector<int64_t> scores_dim = scores.GetTensorTypeAndShapeInfo().GetShape();
 
   // loop over batch
   int64_t nbatch = boxes_dim[0];
@@ -354,8 +356,8 @@ void NMSRotatedKernel::Compute(OrtKernelContext* context) {
 
   std::vector<int64_t> inds_dims({(int64_t)res_order.size() / 3, 3});
 
-  OrtValue* res = ort_.KernelContext_GetOutput(context, 0, inds_dims.data(), inds_dims.size());
-  int64_t* res_data = ort_.GetTensorMutableData<int64_t>(res);
+  auto res = ctx.GetOutput(0, inds_dims.data(), inds_dims.size());
+  int64_t* res_data = res.GetTensorMutableData<int64_t>();
 
   memcpy(res_data, res_order.data(), sizeof(int64_t) * res_order.size());
 

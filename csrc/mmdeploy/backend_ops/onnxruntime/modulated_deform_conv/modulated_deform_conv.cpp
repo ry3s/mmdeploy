@@ -113,18 +113,18 @@ void deformable_conv2d_ref_fp32(const float *src, const float *offset, const flo
 MMCVModulatedDeformConvKernel::MMCVModulatedDeformConvKernel(const OrtApi &api,
                                                              const OrtKernelInfo *info)
     : ort_(api), info_(info) {
-  std::vector<int64_t> stride = ort_.KernelInfoGetAttribute<std::vector<int64_t>>(info, "stride");
+  const auto kernel_info = Ort::ConstKernelInfo(info);
+  std::vector<int64_t> stride = kernel_info.GetAttributes<int64_t>("stride");
   stride_height_ = stride[0];
   stride_width_ = stride[1];
-  std::vector<int64_t> padding = ort_.KernelInfoGetAttribute<std::vector<int64_t>>(info, "padding");
+  std::vector<int64_t> padding = kernel_info.GetAttributes<int64_t>("padding");
   padding_height_ = padding[0];
   padding_width_ = padding[1];
-  std::vector<int64_t> dilation =
-      ort_.KernelInfoGetAttribute<std::vector<int64_t>>(info, "dilation");
+  std::vector<int64_t> dilation = kernel_info.GetAttributes<int64_t>("dilation");
   dilation_height_ = dilation[0];
   dilation_width_ = dilation[1];
-  deformable_group_ = ort_.KernelInfoGetAttribute<int64_t>(info, "deform_groups");
-  group_ = ort_.KernelInfoGetAttribute<int64_t>(info, "groups");
+  deformable_group_ = kernel_info.GetAttribute<int64_t>("deform_groups");
+  group_ = kernel_info.GetAttribute<int64_t>("groups");
 
   // create allocator
   allocator_ = Ort::AllocatorWithDefaultOptions();
@@ -140,26 +140,27 @@ void MMCVModulatedDeformConvKernel::Compute(OrtKernelContext *context) {
   const int64_t deformable_group = deformable_group_;
   const int64_t group = group_;
 
-  const OrtValue *input = ort_.KernelContext_GetInput(context, 0);
-  const float *input_data = reinterpret_cast<const float *>(ort_.GetTensorData<float>(input));
+  const Ort::KernelContext ctx(context);
+  const auto input = ctx.GetInput(0);
+  const float *input_data = input.GetTensorData<float>();
 
-  const OrtValue *offset = ort_.KernelContext_GetInput(context, 1);
-  const float *offset_data = reinterpret_cast<const float *>(ort_.GetTensorData<float>(offset));
+  const auto offset = ctx.GetInput(0); // ort_.KernelContext_GetInput(context, 1);
+  const float *offset_data = offset.GetTensorData<float>(); //reinterpret_cast<const float *>(ort_.GetTensorData<float>(offset));
 
-  const OrtValue *mask = ort_.KernelContext_GetInput(context, 2);
-  const float *mask_data = reinterpret_cast<const float *>(ort_.GetTensorData<float>(mask));
+  const auto mask = ctx.GetInput(2); //ort_.KernelContext_GetInput(context, 2);
+  const float *mask_data = mask.GetTensorData<float>(); // reinterpret_cast<const float *>(ort_.GetTensorData<float>(mask));
 
-  const OrtValue *filter = ort_.KernelContext_GetInput(context, 3);
-  const float *filter_data = reinterpret_cast<const float *>(ort_.GetTensorData<float>(filter));
+  const auto filter = ctx.GetInput(3); // ort_.KernelContext_GetInput(context, 3);
+  const float *filter_data = filter.GetTensorData<float>(); // reinterpret_cast<const float *>(ort_.GetTensorData<float>(filter));
 
-  const OrtValue *bias = ort_.KernelContext_GetInput(context, 4);
-  const float *bias_data = (bias != nullptr)
-                               ? reinterpret_cast<const float *>(ort_.GetTensorData<float>(bias))
-                               : nullptr;
+  const auto bias = ctx.GetInput(4); // ort_.KernelContext_GetInput(context, 4);
+  const float *bias_data = bias.GetTensorData<float>();
   // const float *bias_data = nullptr;
 
-  OrtTensorDimensions input_dims(ort_, input);
-  OrtTensorDimensions filter_dims(ort_, filter);
+  std::vector<int64_t> input_dims = input.GetTensorTypeAndShapeInfo().GetShape();
+  std::vector<int64_t> filter_dims = filter.GetTensorTypeAndShapeInfo().GetShape();
+  // OrtTensorDimensions input_dims(ort_, input);
+  // OrtTensorDimensions filter_dims(ort_, filter);
 
   int64_t batch = input_dims[0];
   int64_t channels = input_dims[1];
@@ -177,9 +178,8 @@ void MMCVModulatedDeformConvKernel::Compute(OrtKernelContext *context) {
       (in_width + 2 * padding_width - dilation_width * (kernel_width - 1) - 1) / stride_width + 1);
 
   std::vector<int64_t> output_dims = {batch, num_output, out_height, out_width};
-  OrtValue *output =
-      ort_.KernelContext_GetOutput(context, 0, output_dims.data(), output_dims.size());
-  float *out_ptr = ort_.GetTensorMutableData<float>(output);
+  auto output = ctx.GetOutput(0, output_dims.data(), output_dims.size());
+  float *out_ptr = output.GetTensorMutableData<float>();
 
   // allocate tmp memory
   int64_t column_len = (channels / group) * kernel_height * kernel_width * out_height * out_width;
