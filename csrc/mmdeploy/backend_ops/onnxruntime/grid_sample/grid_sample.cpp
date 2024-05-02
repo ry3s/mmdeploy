@@ -16,10 +16,18 @@ namespace mmdeploy {
 
 GridSampleKernel::GridSampleKernel(const OrtApi &api, const OrtKernelInfo *info)
     : ort_(api), info_(info){
+
+#if ORT_API_VERSION >= 14
   const auto kernel_info = Ort::ConstKernelInfo(info);
   align_corners_ = kernel_info.GetAttribute<int64_t>("align_corners");
   interpolation_mode_ = kernel_info.GetAttribute<int64_t>("interpolation_mode");
   padding_mode_ = kernel_info.GetAttribute<int64_t>("padding_mode");
+#else
+  Ort::CustomOpApi custom_api{api};
+  align_corners_ = custom_api.KernelInfoGetAttribute<int64_t>(info, "align_corners");
+  interpolation_mode_ = custom_api.KernelInfoGetAttribute<int64_t>(info, "interpolation_mode");
+  padding_mode_ = custom_api.KernelInfoGetAttribute<int64_t>(info, "padding_mode_");
+#endif
 
   allocator_ = Ort::AllocatorWithDefaultOptions();
 }
@@ -146,11 +154,17 @@ void GridSampleKernel::Compute(OrtKernelContext *context) {
   const int64_t padding_mode = padding_mode_;
   const int64_t interpolation_mode = interpolation_mode_;
 
+#if ORT_API_VERSION >= 14
   const Ort::KernelContext ctx(context);
   const auto input = ctx.GetInput(0);
-  const auto* input_data = input.GetTensorData<float>();
-
   const auto grid = ctx.GetInput(1);
+#else
+  Ort::CustomOpApi api{ort_};
+  const Ort::Unowned<const Ort::Value> input = const_cast<OrtValue*>(api.KernelContext_GetInput(context, 0));
+  const Ort::Unowned<const Ort::Value> grid = const_cast<OrtValue*>(api.KernelContext_GetInput(context, 1));
+#endif
+
+  const auto* input_data = input.GetTensorData<float>();
   const auto* grid_data = grid.GetTensorData<float>();
 
   std::vector<int64_t> input_dims = input.GetTensorTypeAndShapeInfo().GetShape();
@@ -164,7 +178,13 @@ void GridSampleKernel::Compute(OrtKernelContext *context) {
   int64_t out_W = grid_dims[2];
 
   std::vector<int64_t> output_dims = {N, C, out_H, out_W};
+
+#if ORT_API_VERSION >= 14
   auto output = ctx.GetOutput(0, output_dims.data(), output_dims.size());
+#else
+  Ort::Unowned<Ort::Value> output = api.KernelContext_GetOutput(context, 0, output_dims.data(), output_dims.size());
+#endif
+
   auto* out_ptr = output.GetTensorMutableData<float>();
 
   int64_t inp_sN = input_dims[1] * input_dims[2] * input_dims[3];
